@@ -1,0 +1,6 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+
+# 二进制资源：别动行尾，也不要让 git 尝试归一化
+*.ico binary
+*.png binary

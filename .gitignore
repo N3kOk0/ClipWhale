@@ -1,0 +1,16 @@
+# build output
+build/
+dist/
+
+# compiler leftovers
+*.o
+*.res
+*.exe
+
+# local tooling - not part of the repo,编译只需要 README 里那两条命令
+build.ps1
+tools/
+
+# test scratch
+_test_appdata/
+_bench/

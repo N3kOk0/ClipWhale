@@ -1,0 +1,36 @@
+#include <windows.h>
+#include "resource.h"
+
+IDI_APPICON   ICON    "app.ico"
+// Same glyph in white - the tray needs this one when the taskbar is dark.
+IDI_APPICON_DARK ICON "app_dark.ico"
+IDR_MANIFEST  RT_MANIFEST "app.manifest"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    1,0,0,0
+ PRODUCTVERSION 1,0,0,0
+ FILEFLAGSMASK  0x3fL
+ FILEFLAGS      0x0L
+ FILEOS         0x40004L
+ FILETYPE       0x1L
+ FILESUBTYPE    0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "CompanyName",      "MaoziMGT\0"
+            VALUE "FileDescription",  "ClipWhale - clipboard history manager\0"
+            VALUE "FileVersion",      "1.0.0.0\0"
+            VALUE "InternalName",     "ClipWhale\0"
+            VALUE "LegalCopyright",   "MIT License\0"
+            VALUE "OriginalFilename", "ClipWhale.exe\0"
+            VALUE "ProductName",      "ClipWhale\0"
+            VALUE "ProductVersion",   "1.0.0.0\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END
