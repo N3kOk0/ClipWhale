@@ -106,9 +106,6 @@ static void RunCommand(UINT cmd) {
     case IDM_SETTINGS:  SettingsShow();       break;
     case IDM_RELOAD:    AppReloadConfig();    break;
     case IDM_OPENDIR:   AppOpenDataDir();     break;
-    // Quitting goes through WM_CLOSE rather than DestroyWindow so that a paste
-    // still in flight gets its clipboard snapshot put back while the window is
-    // still valid - OpenClipboard needs a live owner.
     case IDM_EXIT:      if (g.main) PostMessageW(g.main, WM_CLOSE, 0, 0); break;
     default: break;
     }
@@ -351,19 +348,22 @@ static LRESULT CALLBACK MainProc(HWND hwnd, UINT m, WPARAM w, LPARAM l) {
         if (w) StoreSave(true);
         return 0;
 
-    // A paste may still be in flight. Once the window is destroyed there is no
-    // valid clipboard owner left, so the snapshot has to go back here - doing it
-    // after DestroyWindow silently fails and drops the snapshot.
     case WM_CLOSE:
+        DestroyWindow(hwnd);
+        return 0;
+
+    // A paste may still be in flight, and the timer that would put the snapshot
+    // back is not going to survive the window. Restore here rather than in
+    // WM_CLOSE or after the message loop: WM_DESTROY is reached by every
+    // DestroyWindow path, and the handle is still a valid clipboard owner while
+    // it runs (verified - OpenClipboard succeeds, and once the data is on the
+    // clipboard the system owns it, so it outlives us).
+    case WM_DESTROY:
         if (g.suppressCapture) {
             KillTimer(hwnd, TIMER_RESTORE);
             ClipboardRestoreSnapshot();
             g.suppressCapture = false;
         }
-        DestroyWindow(hwnd);
-        return 0;
-
-    case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
 
@@ -465,10 +465,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     StoreSave(true);
     if (g.settings) DestroyWindow(g.settings);
     if (g.main) {
-        // WM_CLOSE normally did this already; this catches the paths that end
-        // the loop without one (session end, PostQuitMessage from elsewhere).
-        // It only still matters while g.main is alive, which OpenClipboard
-        // needs.
+        // WM_DESTROY normally did this already. This catches the paths that end
+        // the loop without the window being destroyed.
         if (g.suppressCapture) {
             KillTimer(g.main, TIMER_RESTORE);
             ClipboardRestoreSnapshot();
