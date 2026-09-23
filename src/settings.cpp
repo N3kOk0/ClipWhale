@@ -26,9 +26,23 @@ HICON   s_aboutIcon = nullptr;
 HWND    s_aboutIconBox = nullptr;
 WNDPROC s_hotkeyProc = nullptr;
 
-// The About block sits on our own background, so it follows the *app* theme,
-// not the taskbar one the tray icon uses.
-void UpdateAboutIcon() {
+// Everything that shows the app icon follows the *app* theme, not the taskbar
+// one the tray icon uses.
+//
+// Two different mechanisms on purpose:
+//   - the title bar / taskbar button icon is a per-window property, set with
+//     WM_SETICON and re-sent whenever the theme changes;
+//   - the About block is a STATIC that owns a handle we loaded ourselves, and
+//     it has to be destroyed or it leaks.
+void UpdateIcons() {
+    if (g.settings) {
+        bool dark = DarkModeEnabled();
+        SendMessageW(g.settings, WM_SETICON, ICON_BIG,
+                     (LPARAM)(dark ? g.iconBigDark : g.iconBig));
+        SendMessageW(g.settings, WM_SETICON, ICON_SMALL,
+                     (LPARAM)(dark ? g.iconSmallDark : g.iconSmall));
+    }
+
     if (!s_aboutIconBox) return;
     HICON ic = (HICON)LoadImageW(g.inst,
                                  MAKEINTRESOURCEW(DarkModeEnabled() ? IDI_APPICON_DARK : IDI_APPICON),
@@ -327,7 +341,7 @@ void ApplyThemeLive() {
     g.cfg.themeMode = kThemePresets[idx].mode;
     if (DarkModeReevaluate()) {
         DarkModeApplyTree(g.settings, DarkModeEnabled());
-        UpdateAboutIcon();
+        UpdateIcons();
         RedrawWindow(g.settings, nullptr, nullptr,
                      RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
     }
@@ -504,7 +518,7 @@ LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (l && _wcsicmp((const wchar_t*)l, L"ImmersiveColorSet") == 0) {
             if (DarkModeRefresh()) {
                 DarkModeApplyTree(h, DarkModeEnabled());
-                UpdateAboutIcon();
+                UpdateIcons();
                 RedrawWindow(h, nullptr, nullptr,
                              RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
             }
@@ -621,6 +635,10 @@ bool SettingsRegister(HINSTANCE inst) {
     wc.lpfnWndProc   = SettingsProc;
     wc.hInstance     = inst;
     wc.hCursor       = LoadCursorW(nullptr, IDC_ARROW);
+    // Without these the title bar and the taskbar button fall back to the
+    // generic Windows application icon - the class is where Windows looks first.
+    wc.hIcon         = DarkModeEnabled() ? g.iconBigDark : g.iconBig;
+    wc.hIconSm       = DarkModeEnabled() ? g.iconSmallDark : g.iconSmall;
     wc.hbrBackground = nullptr;      // painted in WM_ERASEBKGND, follows the theme
     wc.lpszClassName = WND_CLASS_SET;
     return RegisterClassExW(&wc) != 0;
@@ -688,6 +706,9 @@ void SettingsShow() {
     // only in WM_CREATE is too early for the controls: SetWindowTheme returns
     // S_OK but the check boxes still paint with the classic theme.
     DarkModeApplyTree(g.settings, DarkModeEnabled());
+    // The window class only carries the icon that was current when it was
+    // registered, so a window created after a theme change has to be told again.
+    UpdateIcons();
     SetForegroundWindow(g.settings);
     SetFocus(s_hotkey);
 }
