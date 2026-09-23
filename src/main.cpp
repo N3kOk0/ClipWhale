@@ -341,12 +341,17 @@ static LRESULT CALLBACK MainProc(HWND hwnd, UINT m, WPARAM w, LPARAM l) {
                 // The clipboard was busy (or the formats would not go back).
                 // The snapshot survives a failed restore on purpose, so retry a
                 // few times before leaving the user with an empty clipboard.
-                if (++s_restoreTries < kRestoreTries) {
+                ++s_restoreTries;
+                if (s_restoreTries < kRestoreTries) {
+                    Log(L"paste: restore attempt %d/%d failed, retrying in %u ms",
+                        s_restoreTries, kRestoreTries, kRestoreRetryMs);
                     SetTimer(hwnd, TIMER_RESTORE, kRestoreRetryMs, nullptr);
                     return 0;
                 }
-                Log(L"paste: giving up on the restore after %d tries", s_restoreTries);
+                Log(L"paste: giving up on the restore after %d attempts", s_restoreTries);
                 ClipboardDropSnapshot();
+            } else if (s_restoreTries > 0) {
+                Log(L"paste: restore succeeded on attempt %d", s_restoreTries + 1);
             }
             s_restoreTries = 0;
             g.suppressCapture = false;

@@ -217,6 +217,21 @@ bool ClipboardSnapshot() {
     return g_snapValid;
 }
 
+// Put the snapshot back on the clipboard.
+//
+// Best effort, not a transaction. Win32 has no atomic clipboard replace: the
+// old contents have to be emptied before the new ones go on, and any
+// SetClipboardData after that can still fail. What is guaranteed is narrower
+// but matters:
+//
+//   * the clipboard is not emptied until every replacement is already built,
+//     so a failed allocation leaves the user's contents untouched;
+//   * the snapshot keeps its source data, including its own HBITMAP, so a
+//     failed attempt can be retried without having lost anything;
+//   * the snapshot is only released once every format went back.
+//
+// Returns true when the clipboard holds everything it held before (or when
+// there was nothing to put back). False means "try again later".
 bool ClipboardRestoreSnapshot() {
     if (!g.main) { FreeSnap(); return false; }
 

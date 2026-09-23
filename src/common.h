@@ -210,6 +210,8 @@ void ClipboardShutdown(HWND owner);
 void ClipboardCapture();                      // called on WM_CLIPBOARDUPDATE
 bool ClipboardSetText(const std::wstring& text);
 bool ClipboardSnapshot();                     // grab whatever is there now
+// Best effort, not a Win32 transaction: see the note in clipboard.cpp.
+// False means the snapshot is still held and the call is worth retrying.
 bool ClipboardRestoreSnapshot();
 void ClipboardDropSnapshot();
 bool WaitModifiersUp(int timeoutMs);         // true if they came up in time
