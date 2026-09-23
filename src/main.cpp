@@ -203,9 +203,11 @@ void AppPastePrevious() {
     // The system clipboard history is the better source when it is there: it
     // holds everything the user copied, not just the two entries we track. Our
     // own store is the fallback for when the history is switched off, refused,
-    // or shorter than two entries.
+    // or cannot be made sense of.
     std::wstring text;
-    if (g.cfg.useSystemHistory && SystemHistoryPrevious(text)) {
+    std::wstring onClipboard;
+    if (g.cfg.useSystemHistory && ClipboardPeekText(onClipboard) &&
+        SystemHistoryPrevious(onClipboard, text)) {
         Log(L"paste: previous entry taken from the system history (%u chars)",
             (unsigned)text.size());
     } else if (!g.prev.empty()) {
@@ -213,6 +215,13 @@ void AppPastePrevious() {
         Log(L"paste: system history unusable, falling back to our own store");
     } else {
         Log(L"paste: nothing to paste");
+        return;
+    }
+
+    // Reading the history pumps this thread's queue, which means the user may
+    // have closed the window while we were waiting. Everything below needs it.
+    if (!g.main || !IsWindow(g.main)) {
+        Log(L"paste: the main window is gone, abandoning the paste");
         return;
     }
 

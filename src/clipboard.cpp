@@ -130,6 +130,28 @@ static void MarkExcludeFromHistory() {
     SetClipFmt(kNoHistory, &no, sizeof(no));
 }
 
+// The text currently on the clipboard, or false. Read-only: used to check that
+// the system history really is showing this content first.
+bool ClipboardPeekText(std::wstring& out) {
+    out.clear();
+    if (!g.main || !OpenRetry(g.main, 5)) return false;
+
+    bool ok = false;
+    if (IsClipboardFormatAvailable(CF_UNICODETEXT)) {
+        HANDLE h = GetClipboardData(CF_UNICODETEXT);
+        if (h) {
+            const wchar_t* p = (const wchar_t*)GlobalLock(h);
+            if (p) {
+                out.assign(p, wcsnlen(p, CAP_TEXT_CHARS));
+                GlobalUnlock(h);
+                ok = !out.empty();
+            }
+        }
+    }
+    CloseClipboard();
+    return ok;
+}
+
 bool ClipboardSetText(const std::wstring& text) {
     if (text.empty()) return false;
     if (!g.main || !OpenRetry(g.main, 10)) return false;

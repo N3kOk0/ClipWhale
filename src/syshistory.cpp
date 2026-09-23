@@ -60,8 +60,12 @@ bool EnsureSta() {
 }
 
 // The operation only completes while this thread pumps, so this is not a sleep
-// loop. WM_QUIT is put back and reported as "not done" so the real loop ends.
-bool PumpUntilDone(IAsyncInfo* info, DWORD timeoutMs) {
+// loop. That pump also dispatches whatever else arrives, including the WM_CLOSE
+// the user just asked for - so the caller has to assume the window may be gone
+// by the time this returns. `sawQuit` tells the two outcomes apart so the log
+// does not blame a timeout when the app was simply told to close.
+bool PumpUntilDone(IAsyncInfo* info, DWORD timeoutMs, bool* sawQuit = nullptr) {
+    if (sawQuit) *sawQuit = false;
     DWORD start = GetTickCount();
     for (;;) {
         AsyncStatus st = AsyncStatus::Started;
@@ -72,7 +76,8 @@ bool PumpUntilDone(IAsyncInfo* info, DWORD timeoutMs) {
         MSG msg;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
-                PostQuitMessage((int)msg.wParam);
+                if (sawQuit) *sawQuit = true;
+                PostQuitMessage((int)msg.wParam);   // put it back for the real loop
                 return false;
             }
             if (g.settings && IsDialogMessageW(g.settings, &msg)) continue;
@@ -120,8 +125,9 @@ bool TextAt(IVectorView<ClipboardHistoryItem*>* items, unsigned index,
 } // namespace
 
 // ---------------------------------------------------------------------------
-bool SystemHistoryPrevious(std::wstring& out) {
+bool SystemHistoryPrevious(const std::wstring& current, std::wstring& out) {
     out.clear();
+    if (current.empty()) return false;
     if (!EnsureSta()) return false;
 
     const wchar_t* kClass = L"Windows.ApplicationModel.DataTransfer.Clipboard";
@@ -147,8 +153,10 @@ bool SystemHistoryPrevious(std::wstring& out) {
     Hold<IAsyncInfo> info;
     if (FAILED(op->QueryInterface(__uuidof(IAsyncInfo), (void**)info.ref())) || !info)
         return false;
-    if (!PumpUntilDone(info.get(), 2000)) {
-        Log(L"syshistory: timed out waiting for the history");
+    bool sawQuit = false;
+    if (!PumpUntilDone(info.get(), 2000, &sawQuit)) {
+        Log(sawQuit ? L"syshistory: shutting down, giving up on the history"
+                    : L"syshistory: timed out waiting for the history");
         return false;
     }
 
@@ -175,9 +183,20 @@ bool SystemHistoryPrevious(std::wstring& out) {
         return false;
     }
 
-    // Entry 0 is what is on the clipboard now, so entry 1 is the one before it.
-    // That only holds because our own temporary writes are marked as
-    // "do not keep in history" - see ClipboardSetText.
+    // The history is newest first, so entry 1 is the one before whatever is on
+    // the clipboard - but only if entry 0 really is that. It will not be when
+    // whatever set the clipboard excluded itself from the history (a password
+    // manager, or our own swap before this change), when the clipboard was
+    // emptied, or when the shell has not caught up yet. Being wrong here means
+    // handing back something much further back, so check instead of assuming,
+    // and let the caller fall back to its own store when it does not line up.
+    std::wstring first;
+    if (!TextAt(items.get(), 0, first) || first != current) {
+        Log(L"syshistory: entry 0 is not what is on the clipboard; "
+            L"cannot tell which entry is the previous one");
+        return false;
+    }
+
     if (!TextAt(items.get(), 1, out)) {
         Log(L"syshistory: entry 1 has no text");
         out.clear();

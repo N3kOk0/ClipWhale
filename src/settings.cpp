@@ -328,6 +328,7 @@ void ResetControls() {
     g.cfg.autostart  = d.autostart;
     g.cfg.trimWhitespace = d.trimWhitespace;
     g.cfg.themeMode  = d.themeMode;
+    g.cfg.useSystemHistory = d.useSystemHistory;
     LoadControls();
 }
 

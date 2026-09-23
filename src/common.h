@@ -211,6 +211,7 @@ bool ClipboardInit(HWND owner);
 void ClipboardShutdown(HWND owner);
 void ClipboardCapture();                      // called on WM_CLIPBOARDUPDATE
 bool ClipboardSetText(const std::wstring& text);
+bool ClipboardPeekText(std::wstring& out);    // text currently on the clipboard
 bool ClipboardSnapshot();                     // grab whatever is there now
 // Best effort, not a Win32 transaction: see the note in clipboard.cpp.
 // False means the snapshot is still held and the call is worth retrying.
@@ -223,10 +224,10 @@ void SendPasteKeys(HWND target);
 //  syshistory.cpp : the Windows clipboard history (Win+V)
 //
 // The entry before the one currently on the clipboard, or false when the
-// history cannot be used - switched off, refused, or shorter than two entries.
-// Callers fall back to their own store.
-// ---------------------------------------------------------------------------
-bool SystemHistoryPrevious(std::wstring& out);
+// history cannot be used - switched off, refused, shorter than two entries, or
+// not showing `current` first so the ordering cannot be trusted. `current` must
+// be the text on the clipboard right now. Callers fall back to their own store.
+bool SystemHistoryPrevious(const std::wstring& current, std::wstring& out);
 
 // ---------------------------------------------------------------------------
 //  settings.cpp
