@@ -10,6 +10,14 @@
 
 AppState g;
 
+// Restoring the snapshot can fail while another application holds the clipboard
+// open. clipboard.cpp deliberately keeps the snapshot when that happens, so it
+// is worth trying again a few times before leaving the user with an empty
+// clipboard.
+static const int kRestoreTries   = 8;
+static const UINT kRestoreRetryMs = 250;
+static int s_restoreTries = 0;
+
 // ---------------------------------------------------------------------------
 static bool RegisterHotkey() {
     if (!g.main) return false;
@@ -208,6 +216,7 @@ void AppPastePrevious() {
 
     // 3. Swap the clipboard over to the previous entry.
     const std::wstring text = g.prev;
+    s_restoreTries = 0;
     ClipboardSnapshot();
     g.suppressCapture = true;
     if (!ClipboardSetText(text)) {
@@ -328,7 +337,18 @@ static LRESULT CALLBACK MainProc(HWND hwnd, UINT m, WPARAM w, LPARAM l) {
         }
         if (w == TIMER_RESTORE) {
             KillTimer(hwnd, TIMER_RESTORE);
-            ClipboardRestoreSnapshot();
+            if (!ClipboardRestoreSnapshot()) {
+                // The clipboard was busy (or the formats would not go back).
+                // The snapshot survives a failed restore on purpose, so retry a
+                // few times before leaving the user with an empty clipboard.
+                if (++s_restoreTries < kRestoreTries) {
+                    SetTimer(hwnd, TIMER_RESTORE, kRestoreRetryMs, nullptr);
+                    return 0;
+                }
+                Log(L"paste: giving up on the restore after %d tries", s_restoreTries);
+                ClipboardDropSnapshot();
+            }
+            s_restoreTries = 0;
             g.suppressCapture = false;
             TrimProcessWorkingSet();
             return 0;
@@ -353,11 +373,14 @@ static LRESULT CALLBACK MainProc(HWND hwnd, UINT m, WPARAM w, LPARAM l) {
         return 0;
 
     // A paste may still be in flight, and the timer that would put the snapshot
-    // back is not going to survive the window. Restore here rather than in
-    // WM_CLOSE or after the message loop: WM_DESTROY is reached by every
-    // DestroyWindow path, and the handle is still a valid clipboard owner while
-    // it runs (verified - OpenClipboard succeeds, and once the data is on the
-    // clipboard the system owns it, so it outlives us).
+    // back is not going to survive the window. WM_DESTROY is reached by every
+    // DestroyWindow path, so that is where the restore belongs.
+    //
+    // The handle is still usable as a clipboard owner while WM_DESTROY runs,
+    // but that is an empirical result on current Windows rather than a
+    // documented guarantee - the docs only promise the window is off-screen by
+    // then. If OpenClipboard ever starts failing here, move this into WM_CLOSE,
+    // which runs before the window is destroyed at all.
     case WM_DESTROY:
         if (g.suppressCapture) {
             KillTimer(hwnd, TIMER_RESTORE);

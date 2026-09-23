@@ -219,7 +219,14 @@ bool ClipboardSnapshot() {
 
 bool ClipboardRestoreSnapshot() {
     if (!g_snapValid || !g.main) { FreeSnap(); return false; }
-    if (!OpenRetry(g.main, 10)) { FreeSnap(); return false; }
+
+    if (!OpenRetry(g.main, 10)) {
+        // Another application is holding the clipboard. Keep the snapshot: a
+        // later attempt can still put it back, and freeing it here would make
+        // the loss permanent. The caller decides whether to retry.
+        Log(L"restore: OpenClipboard failed, snapshot kept");
+        return false;
+    }
 
     EmptyClipboard();
     bool any = false;
@@ -238,9 +245,19 @@ bool ClipboardRestoreSnapshot() {
         else GlobalFree(h);
     }
     CloseClipboard();
+
+    if (!any) {
+        // Nothing went back, and EmptyClipboard has already run, so the
+        // clipboard is empty right now. Keeping the snapshot is what makes a
+        // retry able to undo that - throwing it away here would leave the user
+        // with neither their data nor ours.
+        Log(L"restore: FAILED, clipboard left empty, snapshot kept");
+        return false;
+    }
+
     FreeSnap();
-    Log(L"restore: %ls", any ? L"ok" : L"failed");
-    return any;
+    Log(L"restore: ok");
+    return true;
 }
 
 // ---------------------------------------------------------------------------
