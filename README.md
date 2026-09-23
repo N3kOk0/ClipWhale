@@ -48,11 +48,13 @@
 - Win32 原生开发
 - 支持深色模式
 
-<p align="right">(<a href="#top">回到顶部</a>)</p>
+<p align="right">(<a href="#top">返回顶部</a>)</p>
 
 
 ## 安装和使用
 
+> [!NOTE]
+> 需要 Windows 10 以上版本, x64 架构
 - 从 [Releases](https://github.com/N3kOk0/ClipWhale/releases) 下载主程序文件
 - 双击打开，程序常驻托盘
 - 右键托盘图标弹出选项
@@ -102,14 +104,14 @@ g++ -std=c++17 -municode -mwindows `
 4. 推送到该分支 (`git push origin feature/AmazingFeature`)
 5. 创建一个拉取请求（Pull Request）
 
-<p align="right">(<a href="#top">回到顶部</a>)</p>
+<p align="right">(<a href="#top">返回顶部</a>)</p>
 
 
 ## 许可证
 
 根据 MIT 许可证分发。打开 [LICENSE](LICENSE) 查看更多内容。
 
-<p align="right">(<a href="#top">回到顶部</a>)</p>
+<p align="right">(<a href="#top">返回顶部</a>)</p>
 
 
 ## 致谢
@@ -117,7 +119,7 @@ g++ -std=c++17 -municode -mwindows `
 * [Best-README-Template-zh](https://github.com/songjiahao-wq/Best-README-Template-zh)
 * [Deepseek](https://platform.deepseek.com)
 
-<p align="right">(<a href="#top">回到顶部</a>)</p>
+<p align="right">(<a href="#top">返回顶部</a>)</p>
 
 
 
