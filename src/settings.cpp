@@ -596,9 +596,15 @@ LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g.settings = nullptr;
         s_hotkey = s_pasteKey = s_delay = s_restore = s_waitRelease = nullptr;
         s_chkAuto = s_chkTrim = nullptr;
+        s_aboutIconBox = nullptr;
         if (s_aboutIcon) { DestroyIcon(s_aboutIcon); s_aboutIcon = nullptr; }
-        if (s_font) { DeleteObject(s_font); s_font = nullptr; }
-        if (s_fontTitle && s_fontTitle != s_font) { DeleteObject(s_fontTitle); s_fontTitle = nullptr; }
+        // Delete each font exactly once. Clearing s_font first would turn the
+        // second test into "s_fontTitle != nullptr", which is true whenever both
+        // names point at the same handle - the fallback when CreateFontIndirect
+        // failed - and that is a double delete.
+        if (s_fontTitle && s_fontTitle != s_font) DeleteObject(s_fontTitle);
+        if (s_font) DeleteObject(s_font);
+        s_font = s_fontTitle = nullptr;
         TrimProcessWorkingSet();
         return 0;
 
