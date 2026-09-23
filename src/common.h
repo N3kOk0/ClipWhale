@@ -166,7 +166,11 @@ std::wstring FormatHotkey(UINT mods, UINT vk);
 std::wstring KeyName(UINT vk);
 bool         ParseHotkey(const std::wstring& s, UINT& mods, UINT& vk);
 bool         ReadAllBytes(const std::wstring& path, std::vector<uint8_t>& out);
-bool         WriteAllBytes(const std::wstring& path, const void* data, size_t len);
+// lastError, if given, receives the Win32 error from whichever call failed.
+// It has to be captured inside the function: CloseHandle runs on the way out
+// and would clobber GetLastError() before the caller could read it.
+bool         WriteAllBytes(const std::wstring& path, const void* data, size_t len,
+                           DWORD* lastError = nullptr);
 bool         AutoStartIsOn();
 void         AutoStartSet(bool on);
 bool         IsSystemDarkMode();
@@ -208,8 +212,7 @@ bool ClipboardSetText(const std::wstring& text);
 bool ClipboardSnapshot();                     // grab whatever is there now
 bool ClipboardRestoreSnapshot();
 void ClipboardDropSnapshot();
-bool WaitModifiersUp(int timeoutMs);
-void ForceReleaseModifiers();
+bool WaitModifiersUp(int timeoutMs);         // true if they came up in time
 void SendPasteKeys(HWND target);
 
 // ---------------------------------------------------------------------------

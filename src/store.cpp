@@ -52,13 +52,21 @@ void StoreSave(bool force) {
     putStr(g.prev);
 
     const std::wstring tmp = HistoryPath() + L".tmp";
-    if (WriteAllBytes(tmp, buf.data(), buf.size())) {
-        MoveFileExW(tmp.c_str(), HistoryPath().c_str(), MOVEFILE_REPLACE_EXISTING);
-        g.dirty = false;
-        Log(L"store: saved %u bytes", (unsigned)buf.size());
-    } else {
-        Log(L"store: save FAILED");
+
+    DWORD err = 0;
+    if (!WriteAllBytes(tmp, buf.data(), buf.size(), &err)) {
+        Log(L"store: write FAILED (error %lu)", (unsigned long)err);
+        return;                      // g.dirty stays set, so the next timer retries
     }
+    if (!MoveFileExW(tmp.c_str(), HistoryPath().c_str(), MOVEFILE_REPLACE_EXISTING)) {
+        // The .tmp still holds the data. Clearing g.dirty here would silently
+        // stop retrying and leave the previous history on disk for good.
+        Log(L"store: replace FAILED (error %lu)", (unsigned long)GetLastError());
+        return;
+    }
+
+    g.dirty = false;
+    Log(L"store: saved %u bytes", (unsigned)buf.size());
 }
 
 void StoreLoad() {

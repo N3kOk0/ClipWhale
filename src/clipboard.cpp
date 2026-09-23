@@ -258,9 +258,6 @@ static const int kModWatch[] = {
     VK_LWIN, VK_RWIN
 };
 
-// generic VKs - these are the ones that actually get injected
-static const int kModGeneric[] = { VK_SHIFT, VK_CONTROL, VK_MENU, VK_LWIN, VK_RWIN };
-
 bool WaitModifiersUp(int timeoutMs) {
     DWORD start = GetTickCount();
     for (;;) {
@@ -278,29 +275,6 @@ bool WaitModifiersUp(int timeoutMs) {
             return false;
         }
         Sleep(8);
-    }
-}
-
-// Last resort when the configured wait times out: push the modifiers up
-// ourselves. Never used with the default settings (WaitReleaseMs=0), because
-// SendPasteKeys does the same thing inline, instantly.
-void ForceReleaseModifiers() {
-    INPUT in[8];
-    UINT n = 0;
-    for (int k : kModGeneric) {
-        if (!(GetAsyncKeyState(k) & 0x8000)) continue;
-        if (n >= 8) break;
-        in[n] = INPUT{};
-        in[n].type = INPUT_KEYBOARD;
-        in[n].ki.wVk = (WORD)k;
-        in[n].ki.wScan = (WORD)MapVirtualKeyW((UINT)k, MAPVK_VK_TO_VSC);
-        in[n].ki.dwFlags = KEYEVENTF_KEYUP;
-        ++n;
-    }
-    if (n) {
-        SendInput(n, in, sizeof(INPUT));
-        Sleep(12);
-        Log(L"force-released %u modifier(s)", n);
     }
 }
 

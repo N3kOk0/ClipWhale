@@ -209,17 +209,26 @@ bool ReadAllBytes(const std::wstring& path, std::vector<uint8_t>& out) {
     return true;
 }
 
-bool WriteAllBytes(const std::wstring& path, const void* data, size_t len) {
+bool WriteAllBytes(const std::wstring& path, const void* data, size_t len, DWORD* lastError) {
+    if (lastError) *lastError = 0;
+
     HANDLE h = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr,
                            CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (h == INVALID_HANDLE_VALUE) return false;
+    if (h == INVALID_HANDLE_VALUE) {
+        if (lastError) *lastError = GetLastError();
+        return false;
+    }
     const uint8_t* p = (const uint8_t*)data;
     size_t put = 0;
     bool ok = true;
     while (put < len) {
         DWORD chunk = (DWORD)((len - put) > (1u << 20) ? (1u << 20) : (len - put));
         DWORD wrote = 0;
-        if (!WriteFile(h, p + put, chunk, &wrote, nullptr) || wrote == 0) { ok = false; break; }
+        if (!WriteFile(h, p + put, chunk, &wrote, nullptr) || wrote == 0) {
+            if (lastError) *lastError = GetLastError();
+            ok = false;
+            break;
+        }
         put += wrote;
     }
     CloseHandle(h);

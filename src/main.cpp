@@ -106,7 +106,10 @@ static void RunCommand(UINT cmd) {
     case IDM_SETTINGS:  SettingsShow();       break;
     case IDM_RELOAD:    AppReloadConfig();    break;
     case IDM_OPENDIR:   AppOpenDataDir();     break;
-    case IDM_EXIT:      if (g.main) DestroyWindow(g.main); break;
+    // Quitting goes through WM_CLOSE rather than DestroyWindow so that a paste
+    // still in flight gets its clipboard snapshot put back while the window is
+    // still valid - OpenClipboard needs a live owner.
+    case IDM_EXIT:      if (g.main) PostMessageW(g.main, WM_CLOSE, 0, 0); break;
     default: break;
     }
 }
@@ -155,6 +158,23 @@ static void EnsureForeground(HWND target) {
 }
 
 // ---------------------------------------------------------------------------
+//  The desktop and the taskbar are always happy to be the foreground window,
+//  and clicking the tray to reach our own menu lands you there. Injecting a
+//  paste into them does nothing except beep, so treat them as "no target".
+// ---------------------------------------------------------------------------
+static bool IsShellWindow(HWND h) {
+    if (!h) return true;
+
+    wchar_t cls[64] = {};
+    GetClassNameW(h, cls, ARRAYSIZE(cls));
+
+    return _wcsicmp(cls, L"Progman") == 0 ||               // desktop
+           _wcsicmp(cls, L"WorkerW") == 0 ||               // desktop backdrop
+           _wcsicmp(cls, L"Shell_TrayWnd") == 0 ||         // taskbar
+           _wcsicmp(cls, L"Shell_SecondaryTrayWnd") == 0;  // taskbar, other monitor
+}
+
+// ---------------------------------------------------------------------------
 //  The whole point of the program.
 // ---------------------------------------------------------------------------
 void AppPastePrevious() {
@@ -164,8 +184,8 @@ void AppPastePrevious() {
     }
 
     HWND target = GetForegroundWindow();
-    if (!target || target == g.main) {
-        Log(L"paste: no target window");
+    if (!target || target == g.main || IsShellWindow(target)) {
+        Log(L"paste: no usable target window");
         return;
     }
     Log(L"paste: target %p", (void*)target);
@@ -175,7 +195,14 @@ void AppPastePrevious() {
     //    lifts them for the duration of the keystroke and presses them back
     //    afterwards. That costs nothing and leaves the key state as it was,
     //    instead of making the user sit through their own key release.
-    if (g.cfg.waitReleaseMs > 0) WaitModifiersUp(g.cfg.waitReleaseMs);
+    //
+    //    Timing out is not fatal and must not be "fixed" by force-releasing the
+    //    modifiers here: SendPasteKeys decides what to press back by looking at
+    //    what is held when it runs, so releasing first would make it skip the
+    //    press-back and leave the logical key state disagreeing with the
+    //    physical one.
+    if (g.cfg.waitReleaseMs > 0 && !WaitModifiersUp(g.cfg.waitReleaseMs))
+        Log(L"paste: modifiers still down; SendPasteKeys will juggle them");
     Sleep(10);
 
     // 2. The keystroke goes to whatever window has focus, so make sure that is
@@ -202,7 +229,15 @@ void AppPastePrevious() {
 
     // 6. Put the old clipboard back so a plain Ctrl+V keeps working.
     if (g.main) {
-        SetTimer(g.main, TIMER_RESTORE, (UINT)(g.cfg.restoreDelayMs > 0 ? g.cfg.restoreDelayMs : 1), nullptr);
+        UINT delay = (UINT)(g.cfg.restoreDelayMs > 0 ? g.cfg.restoreDelayMs : 1);
+        if (!SetTimer(g.main, TIMER_RESTORE, delay, nullptr)) {
+            // Without the timer nothing would ever put the snapshot back, and
+            // the user's clipboard would keep our temporary entry.
+            Log(L"paste: restore timer FAILED (error %lu) - restoring now",
+                (unsigned long)GetLastError());
+            ClipboardRestoreSnapshot();
+            g.suppressCapture = false;
+        }
     } else {
         ClipboardRestoreSnapshot();
         g.suppressCapture = false;
@@ -316,6 +351,18 @@ static LRESULT CALLBACK MainProc(HWND hwnd, UINT m, WPARAM w, LPARAM l) {
         if (w) StoreSave(true);
         return 0;
 
+    // A paste may still be in flight. Once the window is destroyed there is no
+    // valid clipboard owner left, so the snapshot has to go back here - doing it
+    // after DestroyWindow silently fails and drops the snapshot.
+    case WM_CLOSE:
+        if (g.suppressCapture) {
+            KillTimer(hwnd, TIMER_RESTORE);
+            ClipboardRestoreSnapshot();
+            g.suppressCapture = false;
+        }
+        DestroyWindow(hwnd);
+        return 0;
+
     case WM_DESTROY:
         PostQuitMessage(0);
         return 0;
@@ -417,7 +464,18 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
 
     StoreSave(true);
     if (g.settings) DestroyWindow(g.settings);
-    if (g.main) ClipboardShutdown(g.main);
+    if (g.main) {
+        // WM_CLOSE normally did this already; this catches the paths that end
+        // the loop without one (session end, PostQuitMessage from elsewhere).
+        // It only still matters while g.main is alive, which OpenClipboard
+        // needs.
+        if (g.suppressCapture) {
+            KillTimer(g.main, TIMER_RESTORE);
+            ClipboardRestoreSnapshot();
+            g.suppressCapture = false;
+        }
+        ClipboardShutdown(g.main);
+    }
     TrayRemove();
     if (g.iconBig) DestroyIcon(g.iconBig);
     if (g.iconSmall && g.iconSmall != g.iconBig) DestroyIcon(g.iconSmall);
