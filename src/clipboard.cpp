@@ -218,7 +218,17 @@ bool ClipboardSnapshot() {
 }
 
 bool ClipboardRestoreSnapshot() {
-    if (!g_snapValid || !g.main) { FreeSnap(); return false; }
+    if (!g.main) { FreeSnap(); return false; }
+
+    if (!g_snapValid) {
+        // Nothing was captured, which means the clipboard held nothing we could
+        // duplicate - only private or unsupported formats. There is nothing to
+        // put back, and clearing the clipboard instead would destroy whatever
+        // those private formats were. Report success so the caller does not
+        // waste retries on an impossible job.
+        Log(L"restore: nothing was captured, nothing to put back");
+        return true;
+    }
 
     if (!OpenRetry(g.main, 10)) {
         // Another application is holding the clipboard. Keep the snapshot: a
@@ -228,35 +238,83 @@ bool ClipboardRestoreSnapshot() {
         return false;
     }
 
-    EmptyClipboard();
-    bool any = false;
-    for (auto& f : g_snap) {
-        if (f.isBitmap) {
-            if (f.bmp && SetClipboardData(CF_BITMAP, f.bmp)) { f.bmp = nullptr; any = true; }
-            continue;
+    // Everything this attempt needs is built BEFORE the clipboard is emptied.
+    // A failed allocation can then never leave the user with a half-restored
+    // clipboard - we just leave what was there alone.
+    struct Prepared {
+        UINT    fmt = 0;
+        HGLOBAL h   = nullptr;                 // byte formats
+        HBITMAP bmp = nullptr;                 // CF_BITMAP, a copy for this attempt
+    };
+    std::vector<Prepared> prep;
+    prep.reserve(g_snap.size());
+
+    auto releasePrep = [&] {
+        for (auto& p : prep) {
+            if (p.bmp)      DeleteObject(p.bmp);
+            else if (p.h)   GlobalFree(p.h);
         }
-        HGLOBAL h = GlobalAlloc(GMEM_MOVEABLE, f.bytes.size());
-        if (!h) continue;
-        void* p = GlobalLock(h);
-        if (!p) { GlobalFree(h); continue; }
-        memcpy(p, f.bytes.data(), f.bytes.size());
-        GlobalUnlock(h);
-        if (SetClipboardData(f.fmt, h)) any = true;
-        else GlobalFree(h);
+        prep.clear();
+    };
+
+    bool ready = true;
+    for (auto& f : g_snap) {
+        Prepared p;
+        p.fmt = f.fmt;
+
+        if (f.isBitmap) {
+            // Never hand the clipboard the snapshot's own HBITMAP. Setting it
+            // transfers ownership, and a retry would then have nothing left to
+            // offer. The snapshot keeps the source; each attempt gets a copy.
+            if (!f.bmp) continue;
+            p.bmp = (HBITMAP)CopyImage(f.bmp, IMAGE_BITMAP, 0, 0, 0);
+            if (!p.bmp) { ready = false; break; }
+        } else {
+            p.h = GlobalAlloc(GMEM_MOVEABLE, f.bytes.size());
+            if (!p.h) { ready = false; break; }
+            void* dst = GlobalLock(p.h);
+            if (!dst) { GlobalFree(p.h); p.h = nullptr; ready = false; break; }
+            memcpy(dst, f.bytes.data(), f.bytes.size());
+            GlobalUnlock(p.h);
+        }
+        prep.push_back(p);
+    }
+
+    if (!ready) {
+        SIZE_T made = prep.size();
+        releasePrep();
+        CloseClipboard();
+        Log(L"restore: only prepared %u of %u formats, clipboard left untouched",
+            (unsigned)made, (unsigned)g_snap.size());
+        return false;
+    }
+
+    EmptyClipboard();
+    const SIZE_T want = prep.size();
+    SIZE_T restored = 0;
+    for (auto& p : prep) {
+        HANDLE given = p.bmp ? (HANDLE)p.bmp : (HANDLE)p.h;
+        if (SetClipboardData(p.fmt, given)) {
+            p.bmp = nullptr;                   // clipboard owns it now
+            p.h   = nullptr;
+            ++restored;
+        }
     }
     CloseClipboard();
+    releasePrep();                             // whatever the clipboard refused
 
-    if (!any) {
-        // Nothing went back, and EmptyClipboard has already run, so the
-        // clipboard is empty right now. Keeping the snapshot is what makes a
-        // retry able to undo that - throwing it away here would leave the user
-        // with neither their data nor ours.
-        Log(L"restore: FAILED, clipboard left empty, snapshot kept");
+    if (restored != want) {
+        // Partial: some formats are on the clipboard, some are not. The
+        // snapshot has to survive so the next attempt can finish the job -
+        // treating "something went back" as success would silently drop the
+        // rest.
+        Log(L"restore: partial (%u/%u formats), snapshot kept",
+            (unsigned)restored, (unsigned)want);
         return false;
     }
 
     FreeSnap();
-    Log(L"restore: ok");
+    Log(L"restore: ok (%u formats)", (unsigned)restored);
     return true;
 }
 
