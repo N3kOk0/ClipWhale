@@ -1,6 +1,9 @@
 # build output
 build/
 dist/
+# 32 位构建的中间产物与产物（含绿色版压缩包）
+build32/
+dist32/
 
 # compiler leftovers
 *.o

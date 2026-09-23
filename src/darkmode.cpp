@@ -29,10 +29,32 @@ enum PreferredAppMode {
     AppModeForceLight = 3
 };
 
+// The x86 calling conventions for these ordinals are NOT the ones usually
+// quoted, and getting one wrong eats the stack of whichever function made the
+// call - which is exactly why the 32-bit build used to die at the closing brace
+// of DarkModeInit() with a garbled frame, while 64-bit was fine.
+//
+// They were measured rather than guessed: one call per process, comparing ESP
+// before and after, looking for the single declaration that leaves it balanced.
+//
+//      132 AllowDarkModeForApp     __cdecl
+//      133 FlushMenuThemes         __stdcall, 2 args
+//      135 SetPreferredAppMode     __stdcall, 1 arg
+//      136 AllowDarkModeForWindow  __cdecl
+//
+// x64 has a single calling convention, so the keywords are meaningless there and
+// that path keeps the plain declarations it has always used.
+#if defined(__i386__)
+typedef int  (__cdecl *PFN_AllowDarkModeForApp)(BOOL);
+typedef void (WINAPI  *PFN_FlushMenuThemes)(DWORD, DWORD);
+typedef int  (WINAPI  *PFN_SetPreferredAppMode)(int);
+typedef BOOL (__cdecl *PFN_AllowDarkModeForWindow)(HWND, BOOL);
+#else
 typedef int  (WINAPI *PFN_SetPreferredAppMode)(int);
 typedef BOOL (WINAPI *PFN_AllowDarkModeForWindow)(HWND, BOOL);
 typedef BOOL (WINAPI *PFN_AllowDarkModeForApp)(BOOL);
 typedef void (WINAPI *PFN_FlushMenuThemes)(void);
+#endif
 
 PFN_SetPreferredAppMode    pSetPreferredAppMode = nullptr;
 PFN_AllowDarkModeForWindow pAllowDarkModeForWindow = nullptr;
@@ -58,7 +80,15 @@ void PushAppMode() {
         // pre-1903 fallback: no mode argument, just a boolean
         pAllowDarkModeForApp(mode == AppModeForceDark || mode == AppModeAllowDark ? TRUE : FALSE);
     }
-    if (pFlushMenuThemes) pFlushMenuThemes();
+    if (pFlushMenuThemes) {
+#if defined(__i386__)
+        // stdcall, so this function pops its own arguments - they have to be
+        // pushed or ESP walks upwards and the caller's frame goes with it.
+        pFlushMenuThemes(0, 0);
+#else
+        pFlushMenuThemes();
+#endif
+    }
     Log(L"darkmode: preferred app mode = %d", mode);
 }
 
