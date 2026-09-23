@@ -37,7 +37,7 @@
 //  Identity
 // ---------------------------------------------------------------------------
 #define APP_NAME        L"ClipWhale"
-#define APP_VERSION     L"1.0.0"
+#define APP_VERSION     L"1.0.1"
 #define APP_AUTHOR      L"MaoziMGT"
 #define APP_URL         L"https://github.com/N3kOk0/ClipWhale"
 #define APP_URL_TEXT    L"github.com/N3kOk0/ClipWhale"
