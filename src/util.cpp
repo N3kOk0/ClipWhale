@@ -319,6 +319,9 @@ void ConfigLoad() {
     g.cfg.trimWhitespace = GetPrivateProfileIntW(L"General", L"TrimWhitespace", 0, p.c_str()) != 0;
     g.cfg.themeMode = (int)GetPrivateProfileIntW(L"General", L"Theme", 0, p.c_str());
     if (g.cfg.themeMode < 0 || g.cfg.themeMode > 2) g.cfg.themeMode = 0;
+    g.cfg.useSystemHistory =
+        GetPrivateProfileIntW(L"General", L"UseSystemHistory",
+                              d.useSystemHistory ? 1 : 0, p.c_str()) != 0;
 
     if (g.firstRun) ConfigSave();
 }
@@ -340,4 +343,6 @@ void ConfigSave() {
     WritePrivateProfileStringW(L"General", L"AutoStart", g.cfg.autostart ? L"1" : L"0", p.c_str());
     WritePrivateProfileStringW(L"General", L"TrimWhitespace", g.cfg.trimWhitespace ? L"1" : L"0", p.c_str());
     WritePrivateProfileStringW(L"General", L"Theme", std::to_wstring(g.cfg.themeMode).c_str(), p.c_str());
+    WritePrivateProfileStringW(L"General", L"UseSystemHistory",
+                               g.cfg.useSystemHistory ? L"1" : L"0", p.c_str());
 }

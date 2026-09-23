@@ -114,12 +114,29 @@ static bool SetClipFmt(UINT fmt, const void* data, size_t bytes) {
     return false;
 }
 
+// Ask the shell to keep what we are about to put on the clipboard out of the
+// clipboard history. Both halves of the paste swap have to do this:
+//
+//   * the temporary entry would otherwise clutter the user's Win+V list, and
+//   * putting the user's own content back would record a second copy of it,
+//     which shifts everything along and makes the next SystemHistoryPrevious
+//     hand back the wrong entry.
+static void MarkExcludeFromHistory() {
+    static UINT kNoHistory = 0;
+    if (!kNoHistory)
+        kNoHistory = RegisterClipboardFormatW(L"CanIncludeInClipboardHistory");
+    if (!kNoHistory) return;
+    DWORD no = 0;                               // 0 = do not include
+    SetClipFmt(kNoHistory, &no, sizeof(no));
+}
+
 bool ClipboardSetText(const std::wstring& text) {
     if (text.empty()) return false;
     if (!g.main || !OpenRetry(g.main, 10)) return false;
 
     bool ok = false;
     if (EmptyClipboard()) {
+        MarkExcludeFromHistory();
         if (SetClipFmt(CF_UNICODETEXT, text.c_str(), (text.size() + 1) * sizeof(wchar_t)))
             ok = true;
 
@@ -305,6 +322,7 @@ bool ClipboardRestoreSnapshot() {
     }
 
     EmptyClipboard();
+    MarkExcludeFromHistory();
     const SIZE_T want = prep.size();
     SIZE_T restored = 0;
     for (auto& p : prep) {

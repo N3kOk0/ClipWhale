@@ -18,6 +18,11 @@ static const int kRestoreTries   = 8;
 static const UINT kRestoreRetryMs = 250;
 static int s_restoreTries = 0;
 
+// Reading the system clipboard history pumps this thread's message queue, so a
+// second hotkey press can arrive in the middle of a paste. This keeps two
+// pastes from overlapping.
+static bool s_pasting = false;
+
 // ---------------------------------------------------------------------------
 static bool RegisterHotkey() {
     if (!g.main) return false;
@@ -183,10 +188,7 @@ static bool IsShellWindow(HWND h) {
 //  The whole point of the program.
 // ---------------------------------------------------------------------------
 void AppPastePrevious() {
-    if (g.prev.empty()) {
-        Log(L"paste: nothing to paste yet (only one entry seen)");
-        return;
-    }
+    if (s_pasting) { Log(L"paste: already in progress"); return; }
 
     HWND target = GetForegroundWindow();
     if (!target || target == g.main || IsShellWindow(target)) {
@@ -194,6 +196,25 @@ void AppPastePrevious() {
         return;
     }
     Log(L"paste: target %p", (void*)target);
+
+    s_pasting = true;
+    struct ResetBusy { ~ResetBusy() { s_pasting = false; } } resetBusy;
+
+    // The system clipboard history is the better source when it is there: it
+    // holds everything the user copied, not just the two entries we track. Our
+    // own store is the fallback for when the history is switched off, refused,
+    // or shorter than two entries.
+    std::wstring text;
+    if (g.cfg.useSystemHistory && SystemHistoryPrevious(text)) {
+        Log(L"paste: previous entry taken from the system history (%u chars)",
+            (unsigned)text.size());
+    } else if (!g.prev.empty()) {
+        text = g.prev;
+        Log(L"paste: system history unusable, falling back to our own store");
+    } else {
+        Log(L"paste: nothing to paste");
+        return;
+    }
 
     // 1. Optionally wait for the user to let go of the hotkey's modifiers.
     //    The default (WaitReleaseMs=0) does not wait at all - SendPasteKeys
@@ -215,7 +236,6 @@ void AppPastePrevious() {
     EnsureForeground(target);
 
     // 3. Swap the clipboard over to the previous entry.
-    const std::wstring text = g.prev;
     s_restoreTries = 0;
     ClipboardSnapshot();
     g.suppressCapture = true;

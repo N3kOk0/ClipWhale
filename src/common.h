@@ -120,6 +120,7 @@ struct Config {
     bool autostart  = true;
     bool trimWhitespace = false;
     int  themeMode  = 0;         // 0 = follow Windows, 1 = force dark, 2 = force light
+    bool useSystemHistory = true;  // read Win+V instead of only our own two entries
 };
 
 struct AppState {
@@ -217,6 +218,15 @@ bool ClipboardRestoreSnapshot();
 void ClipboardDropSnapshot();
 bool WaitModifiersUp(int timeoutMs);         // true if they came up in time
 void SendPasteKeys(HWND target);
+
+// ---------------------------------------------------------------------------
+//  syshistory.cpp : the Windows clipboard history (Win+V)
+//
+// The entry before the one currently on the clipboard, or false when the
+// history cannot be used - switched off, refused, or shorter than two entries.
+// Callers fall back to their own store.
+// ---------------------------------------------------------------------------
+bool SystemHistoryPrevious(std::wstring& out);
 
 // ---------------------------------------------------------------------------
 //  settings.cpp
