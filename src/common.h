@@ -53,6 +53,7 @@
 #define TIMER_SAVE          1
 #define TIMER_RESTORE       2
 #define TIMER_UNSUPPRESS    3
+#define TIMER_TRIM          4
 
 #define HOTKEY_ID_MAIN      1
 #define TRAY_UID            1

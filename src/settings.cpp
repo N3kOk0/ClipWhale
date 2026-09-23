@@ -605,7 +605,10 @@ LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (s_fontTitle && s_fontTitle != s_font) DeleteObject(s_fontTitle);
         if (s_font) DeleteObject(s_font);
         s_font = s_fontTitle = nullptr;
-        TrimProcessWorkingSet();
+        // Do not trim from in here. WM_DESTROY is still running, so every page
+        // this code touches is faulted straight back in and the trim is wasted.
+        // A moment later, once the destruction has settled, it actually works.
+        if (g.main) SetTimer(g.main, TIMER_TRIM, 600, nullptr);
         return 0;
 
     default: break;

@@ -363,6 +363,13 @@ static LRESULT CALLBACK MainProc(HWND hwnd, UINT m, WPARAM w, LPARAM l) {
             g.suppressCapture = false;
             return 0;
         }
+        // One shot, armed when the settings window goes away: the trim has to
+        // happen after the destruction stops touching those pages.
+        if (w == TIMER_TRIM) {
+            KillTimer(hwnd, TIMER_TRIM);
+            TrimProcessWorkingSet();
+            return 0;
+        }
         break;
 
     case WM_QUERYENDSESSION:
